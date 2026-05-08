@@ -10,8 +10,10 @@ provided functions).
 from __future__ import annotations
 
 import json
+import random
+from collections import defaultdict
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Sequence
 
 import torch
 from PIL import Image
@@ -52,10 +54,12 @@ class EuroSATCLIPDataset(Dataset):
     Yields (image_tensor, caption_string) tuples.
     """
 
-    def __init__(self, split: str = "train", img_size: int = 64) -> None:
-        from datasets import load_dataset
+    def __init__(self, split: str = "train", img_size: int = 64, ds=None) -> None:
+        if ds is None:
+            from datasets import load_dataset
 
-        self.ds = load_dataset("blanchon/EuroSAT_RGB", split=split)
+            ds = load_dataset("blanchon/EuroSAT_RGB", split=split)
+        self.ds = ds
         self.transform = default_image_transform(img_size)
 
     def __len__(self) -> int:
@@ -70,14 +74,47 @@ class EuroSATCLIPDataset(Dataset):
         return self.transform(img), caption
 
 
+def _stratified_split_indices(
+    labels: Sequence[int],
+    train_frac: float = 0.8,
+    val_frac: float = 0.1,
+    seed: int = 42,
+) -> tuple[list[int], list[int], list[int]]:
+    rng = random.Random(seed)
+    label_to_indices = defaultdict(list)
+    for idx, label in enumerate(labels):
+        label_to_indices[int(label)].append(idx)
+
+    train_indices: list[int] = []
+    val_indices: list[int] = []
+    test_indices: list[int] = []
+    for indices in label_to_indices.values():
+        rng.shuffle(indices)
+        train_end = int(len(indices) * train_frac)
+        val_end = train_end + int(len(indices) * val_frac)
+        train_indices.extend(indices[:train_end])
+        val_indices.extend(indices[train_end:val_end])
+        test_indices.extend(indices[val_end:])
+
+    rng.shuffle(train_indices)
+    rng.shuffle(val_indices)
+    rng.shuffle(test_indices)
+    return train_indices, val_indices, test_indices
+
+
 def build_eurosat_loaders(
     img_size: int = 64,
     batch_size: int = 256,
     num_workers: int = 4,
 ) -> tuple[DataLoader, DataLoader, DataLoader]:
-    train = EuroSATCLIPDataset("train[:80%]", img_size=img_size)
-    val = EuroSATCLIPDataset("train[80%:90%]", img_size=img_size)
-    test = EuroSATCLIPDataset("train[90%:]", img_size=img_size)
+    from datasets import load_dataset
+
+    full_ds = load_dataset("blanchon/EuroSAT_RGB", split="train")
+    train_indices, val_indices, test_indices = _stratified_split_indices(full_ds["label"])
+
+    train = EuroSATCLIPDataset(img_size=img_size, ds=full_ds.select(train_indices))
+    val = EuroSATCLIPDataset(img_size=img_size, ds=full_ds.select(val_indices))
+    test = EuroSATCLIPDataset(img_size=img_size, ds=full_ds.select(test_indices))
 
     def _collate(batch):
         imgs = torch.stack([b[0] for b in batch])
