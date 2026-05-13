@@ -102,6 +102,14 @@ def _stratified_split_indices(
     return train_indices, val_indices, test_indices
 
 
+def _collate_eurosat_clip(
+    batch: list[tuple[torch.Tensor, str]],
+) -> tuple[torch.Tensor, list[str]]:
+    imgs = torch.stack([b[0] for b in batch])
+    caps = [b[1] for b in batch]
+    return imgs, caps
+
+
 def build_eurosat_loaders(
     img_size: int = 64,
     batch_size: int = 256,
@@ -116,22 +124,17 @@ def build_eurosat_loaders(
     val = EuroSATCLIPDataset(img_size=img_size, ds=full_ds.select(val_indices))
     test = EuroSATCLIPDataset(img_size=img_size, ds=full_ds.select(test_indices))
 
-    def _collate(batch):
-        imgs = torch.stack([b[0] for b in batch])
-        caps = [b[1] for b in batch]
-        return imgs, caps
-
     train_dl = DataLoader(
         train, batch_size=batch_size, shuffle=True, num_workers=num_workers,
-        collate_fn=_collate, pin_memory=True, drop_last=True,
+        collate_fn=_collate_eurosat_clip, pin_memory=True, drop_last=True,
     )
     val_dl = DataLoader(
         val, batch_size=batch_size, shuffle=False, num_workers=num_workers,
-        collate_fn=_collate, pin_memory=True,
+        collate_fn=_collate_eurosat_clip, pin_memory=True,
     )
     test_dl = DataLoader(
         test, batch_size=batch_size, shuffle=False, num_workers=num_workers,
-        collate_fn=_collate, pin_memory=True,
+        collate_fn=_collate_eurosat_clip, pin_memory=True,
     )
     return train_dl, val_dl, test_dl
 
@@ -219,6 +222,15 @@ class CLEVRMiniDataset(Dataset):
         }
 
 
+def _collate_clevr_mini(batch: list[dict]) -> dict:
+    return {
+        "image": torch.stack([b["image"] for b in batch]),
+        "question": [b["question"] for b in batch],
+        "answer": [b["answer"] for b in batch],
+        "q_type": [b["q_type"] for b in batch],
+    }
+
+
 def build_clevr_loaders(
     img_size: int = 64,
     batch_size: int = 32,
@@ -227,20 +239,12 @@ def build_clevr_loaders(
     train = CLEVRMiniDataset("train", img_size=img_size)
     val = CLEVRMiniDataset("val", img_size=img_size)
 
-    def _collate(batch):
-        return {
-            "image": torch.stack([b["image"] for b in batch]),
-            "question": [b["question"] for b in batch],
-            "answer": [b["answer"] for b in batch],
-            "q_type": [b["q_type"] for b in batch],
-        }
-
     train_dl = DataLoader(
         train, batch_size=batch_size, shuffle=True, num_workers=num_workers,
-        collate_fn=_collate, pin_memory=True, drop_last=True,
+        collate_fn=_collate_clevr_mini, pin_memory=True, drop_last=True,
     )
     val_dl = DataLoader(
         val, batch_size=batch_size, shuffle=False, num_workers=num_workers,
-        collate_fn=_collate, pin_memory=True,
+        collate_fn=_collate_clevr_mini, pin_memory=True,
     )
     return train_dl, val_dl

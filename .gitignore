@@ -39,3 +39,5 @@ env/
 # OS/editor files
 .DS_Store
 Thumbs.db
+.cursor/
+.vscode/
