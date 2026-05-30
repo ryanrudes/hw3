@@ -10,6 +10,8 @@ import re
 import torch
 import torch.nn.functional as F
 
+from vlm.data import EUROSAT_CLASSES
+
 
 # ---------------------------------------------------------------------------
 # CLIP zero-shot accuracy — §3
@@ -75,6 +77,59 @@ def zeroshot_classification_accuracy(
     projection_heads.train(projection_heads_was_training)
     return accuracy
 
+@torch.no_grad()
+def analyze_classification_accuracy(
+    vit: torch.nn.Module,
+    projection_heads: torch.nn.Module,
+    text_encoder: torch.nn.Module,
+    val_loader,
+    class_prompts: list[str],
+    class_indices: list[int],
+    device: torch.device,
+) -> float:
+    """
+    Pick 5 correctly classified and 5 incorrectly classified validation images.
+    For each incorrectly classified image, inspect the top-3 predicted classes.
+    """
+    vit_was_training = vit.training
+    projection_heads_was_training = projection_heads.training
+    vit.eval()
+    projection_heads.eval()
+    # Encode class prompts once.
+    text_embeds = text_encoder(class_prompts)
+    _, class_proj = projection_heads(
+        torch.zeros(len(class_prompts), vit.d_model if hasattr(vit, "d_model") else 0,
+                    device=text_embeds.device),
+        text_embeds,
+    )
+    class_proj = F.normalize(class_proj, dim=-1)
+
+    correctly_classified = []
+    incorrectly_classified = []
+    for images, captions in val_loader:
+        images = images.to(device)
+        labels = torch.tensor(
+            [class_prompts.index(c) for c in captions], device=device
+        )
+        feats = vit(images)
+        img_proj, _ = projection_heads(feats, torch.zeros_like(text_embeds[:1]))
+        img_proj = F.normalize(img_proj, dim=-1)
+        sims = img_proj @ class_proj.T
+        preds = sims.argmax(dim=-1)
+        for i in range(len(images)):
+            # Get the class label
+            class_label = EUROSAT_CLASSES[preds[i]]
+            # Get the top-3 predicted class labels
+            top_3_preds = sims[i].topk(3).indices.tolist()
+            top_3_preds_labels = [EUROSAT_CLASSES[p] for p in top_3_preds]
+
+            if preds[i] == labels[i]:
+                correctly_classified.append((images[i].permute(1, 2, 0).cpu().numpy(), captions[i], class_label, top_3_preds_labels))
+            else:
+                incorrectly_classified.append((images[i].permute(1, 2, 0).cpu().numpy(), captions[i], class_label, top_3_preds_labels))
+    vit.train(vit_was_training)
+    projection_heads.train(projection_heads_was_training)
+    return correctly_classified, incorrectly_classified
 
 # ---------------------------------------------------------------------------
 # CLEVR exact-match grading — §5

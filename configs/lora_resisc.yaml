@@ -17,11 +17,20 @@ train:
   log_every: 25
   eval_every_epoch: 1
 
-# Per-method overrides.
+# Per-method blocks (shared LR across methods for §4 comparison).
 methods:
   linear_probe:
-    lr: 1.0e-3
+    lr: 1.0e-4
   lora:
     lr: 1.0e-4
   full_ft:
-    lr: 5.0e-5
+    lr: 1.0e-4
+
+# LoRA rank sweep: `uv run python scripts/finetune_resisc.py ... --method lora --lora-rank-sweep`
+# W&B Sweep (grid over rank): add `--wandb-sweep` (requires W&B login / `WANDB_API_KEY`).
+# Uses α = alpha_scale · r so α/r stays constant (default 2 → α = 2r).
+lora_rank_sweep:
+  ranks: [1, 2, 4, 8, 16, 32, 64]
+  alpha_scale: 2.0
+  wandb_project: resisc45-finetune
+  wandb_sweep_name: lora-rank-resisc45

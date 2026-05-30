@@ -57,10 +57,9 @@ class ViT(nn.Module):
       4. Pass the sequence through `num_blocks` Transformer Blocks
          (with is_decoder=False).
       5. Apply a final LayerNorm.
-      6. Return only the [CLS] slice — shape (B, d_model).
-
-    For §5 (VLM), you may want a `return_all_tokens=True` flag that returns the
-    full (B, num_patches+1, d_model) sequence instead. Add it when you get there.
+      6. Return only the [CLS] slice — shape (B, d_model), unless
+         `return_all_tokens=True`, in which case return the full sequence
+         (B, num_patches+1, d_model) including CLS.
 
     Args:
         img_size, patch_size, d_model, num_heads, num_blocks, dropout
@@ -91,7 +90,7 @@ class ViT(nn.Module):
         self.blocks = nn.ModuleList([Block(d_model, num_heads, N + 1, dropout=dropout) for _ in range(num_blocks)])
         self.ln = nn.LayerNorm(d_model)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, return_all_tokens: bool = False) -> torch.Tensor:
         x = self.patch_embed(x)
         B = x.shape[0]
         x = torch.cat([self.cls_token.expand(B, -1, -1), x], dim=1)
@@ -99,6 +98,8 @@ class ViT(nn.Module):
         for block in self.blocks:
             x = block(x)
         x = self.ln(x)
+        if return_all_tokens:
+            return x
         return x[:, 0, :]
 
 

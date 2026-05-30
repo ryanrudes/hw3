@@ -8,6 +8,8 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 
+from basics.model import Head
+
 
 class LoRALinear(nn.Module):
     """Low-rank adapter wrapping an existing nn.Linear layer.
@@ -38,11 +40,17 @@ class LoRALinear(nn.Module):
         # TODO: freeze base_layer's parameters.
         # TODO: create self.A (nn.Parameter, shape (rank, d_in), kaiming-uniform init).
         # TODO: create self.B (nn.Parameter, shape (d_out, rank), zero init).
-        raise NotImplementedError
+        d_in = base_layer.in_features
+        d_out = base_layer.out_features
+        self.A = nn.Parameter(torch.randn(rank, d_in), requires_grad=True)
+        self.B = nn.Parameter(torch.zeros(d_out, rank), requires_grad=True)
+
+        # Do the kaiming initialization for A
+        nn.init.kaiming_uniform_(self.A)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # TODO: return base_layer(x) + scaling * (x @ A.T @ B.T)
-        raise NotImplementedError
+        return self.base_layer(x) + self.scaling * (x @ self.A.T @ self.B.T)
 
 
 def apply_lora_to_attention(model: nn.Module, rank: int, alpha: float) -> nn.Module:
@@ -61,7 +69,11 @@ def apply_lora_to_attention(model: nn.Module, rank: int, alpha: float) -> nn.Mod
                (e.g., a ViT).
         rank, alpha: Forwarded to LoRALinear.
     """
-    # TODO: implement.
-    # Hint: iterate model.named_modules(), check isinstance(m, Head), and
-    # set m.q_proj = LoRALinear(m.q_proj, rank, alpha) (and same for v_proj).
-    raise NotImplementedError
+    # Freeze the full backbone so only new LoRA matrices stay trainable.
+    for p in model.parameters():
+        p.requires_grad = False
+    for _, module in model.named_modules():
+        if isinstance(module, Head):
+            module.q_proj = LoRALinear(module.q_proj, rank, alpha)
+            module.v_proj = LoRALinear(module.v_proj, rank, alpha)
+    return model

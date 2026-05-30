@@ -1,4 +1,20 @@
 # §5 — VLM training on CLEVR.
+#
+# The ViT weights must come from your §3 EuroSAT CLIP run (same architecture as below):
+#   uv run python scripts/pretrain_clip.py --config configs/clip_eurosat.yaml --output-dir runs/clip_eurosat
+# Then pass  --pretrained-vit runs/clip_eurosat/best.pt  (contains vit_state_dict). Do not use an untrained ViT.
+
+vit:
+  img_size: 64
+  patch_size: 8
+  d_model: 384
+  num_heads: 6
+  num_blocks: 6
+  dropout: 0.1
+
+data:
+  root: data/clevr_mini
+  img_size: 64
 
 decoder:
   model_name: HuggingFaceTB/SmolLM2-360M-Instruct
@@ -18,11 +34,12 @@ optim:
 train:
   num_steps: 2000
   batch_size: 32
-  gradient_accumulation_steps: 4
+  gradient_accumulation_steps: 1
   num_workers: 4
   log_every: 25
   eval_every_steps: 200
   eval_max_examples: 500
+  max_grad_norm: 1.0
 
 generation:
   max_new_tokens: 32

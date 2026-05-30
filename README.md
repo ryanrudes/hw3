@@ -113,8 +113,13 @@ uv run python scripts/pretrain_clip.py --config configs/clip_eurosat.yaml
 # §4.2 — Full FT vs LoRA vs linear probe on RESISC45
 uv run python scripts/finetune_resisc.py --config configs/lora_resisc.yaml --method lora --rank 8
 
-# §5 — VLM training on CLEVR
-uv run python scripts/train_vlm.py --config configs/vlm_clevr.yaml --injection all_patches
+# §5 — VLM training on CLEVR (use the ViT from your EuroSAT CLIP run in §3 — same 64/8/384/6/6 arch)
+uv run python scripts/train_vlm.py --config configs/vlm_clevr.yaml \\
+    --pretrained-vit runs/clip_eurosat/best.pt --injection all_patches --mask-mode image_bidir
+
+# §5 — Three-way injection sweep (2000 steps each, projector-only) + printed table / discussion
+uv run python scripts/train_vlm.py --config configs/vlm_clevr.yaml \\
+    --pretrained-vit runs/clip_eurosat/best.pt --all-injections
 
 # §5 — Qualitative evaluation
 uv run python scripts/eval_vlm.py --checkpoint runs/vlm_clevr/best.pt --num-examples 10
